@@ -52,7 +52,6 @@
 #define HAVE_ICONV_H 1
 #define HAVE_SIGNAL_H 1
 
-/* C library functions */
 #define HAVE_MALLOC 1
 #define HAVE_CALLOC 1
 #define HAVE_REALLOC 1
@@ -104,14 +103,14 @@
 #define SDL_LOADSO_DISABLED	1
 
 /* Enable the stub thread support (src/thread/generic/\*.c) */
-#define SDL_THREADS_DISABLED 1
+#define SDL_THREADS_DISABLED	1
 
 /* Enable various timer systems */
-#define SDL_TIMER_3DS 1
-//#define SDL_TIMER_DUMMY 1
+//#define SDL_TIMER_NDS	1
+#define SDL_TIMER_DUMMY 1
 
 /* Enable various video drivers */
-#define SDL_VIDEO_DRIVER_3DS 1
-//#define SDL_VIDEO_DRIVER_DUMMY	1
+//#define SDL_VIDEO_DRIVER_NDS	1
+#define SDL_VIDEO_DRIVER_DUMMY	1
 
 #endif /* _SDL_config_nds_h */
