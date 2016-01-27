@@ -18,8 +18,6 @@
 
 #define DSVID_DRIVER_NAME "3ds"
 
-void gfxSetFramebufferInfo(gfxScreen_t screen, u8 id);
-
 static int DS_VideoInit (_THIS, SDL_PixelFormat *vformat);
 static SDL_Rect **DS_ListModes (_THIS, SDL_PixelFormat *format, Uint32 flags);
 static SDL_Surface *DS_SetVideoMode (_THIS, SDL_Surface *current, int width, int height, int bpp, Uint32 flags);
@@ -33,21 +31,6 @@ static void DS_UnlockHWSurface (_THIS, SDL_Surface *surface);
 static void DS_FreeHWSurface (_THIS, SDL_Surface *surface);
 
 static void DS_UpdateRects (_THIS, int numrects, SDL_Rect *rects);
-
-GSP_FramebufferInfo topFramebufferInfo, bottomFramebufferInfo;
-
-u8 gfxThreadID;
-u8* gfxSharedMemory;
-
-u8* gfxTopLeftFramebuffers[2];
-u8* gfxTopRightFramebuffers[2];
-u8* gfxBottomFramebuffers[2];
-
-static bool enable3d;
-static int doubleBuf[2] = {1,1};
-static u8 currentBuffer[2];
-
-Handle gspEvent, gspSharedMemHandle;
 
 SDL_Rect *mode;
 
@@ -153,36 +136,8 @@ VideoBootStrap TDS_bootstrap = {
 };
 
 int DS_VideoInit (_THIS, SDL_PixelFormat *vformat) {
-	gspInit ();
 
-	gfxSharedMemory = (u8*)0x10002000;
-
-	GSPGPU_AcquireRight (NULL, 0x0);
-
-	svcCreateEvent (&gspEvent, 0x0);
-	GSPGPU_RegisterInterruptRelayQueue (NULL, gspEvent, 0x1, &gspSharedMemHandle, &gfxThreadID);
-	svcMapMemoryBlock (gspSharedMemHandle, (u32)gfxSharedMemory, 0x3, 0x10000000);
-
-	gfxTopLeftFramebuffers[0] = linearAlloc(0x46500);
-	gfxTopLeftFramebuffers[1] = linearAlloc(0x46500);
-	gfxBottomFramebuffers[0] = linearAlloc(0x38400);
-	gfxBottomFramebuffers[1] = linearAlloc(0x38400);
-	gfxTopRightFramebuffers[0] = linearAlloc(0x46500);
-	gfxTopRightFramebuffers[1] = linearAlloc(0x46500);
-	enable3d = false;
-
-	gfxSetFramebufferInfo (GFX_TOP, 0);
-	gfxSetFramebufferInfo (GFX_BOTTOM, 0);
-
-	gxCmdBuf = (u32*)(gfxSharedMemory + 0x800 + gfxThreadID * 0x200);
-
-	currentBuffer[0] = 0;
-	currentBuffer[1] = 0;
-
-	gspInitEventHandler (gspEvent, (vu8*)gfxSharedMemory, gfxThreadID);
-	gspWaitForVBlank ();
-
-	GSPGPU_SetLcdForceBlack (NULL, 0x0);
+	gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
 
 	mode_400x240.w = 400, mode_400x240.h = 240;
 	mode_240x400.w = 240, mode_240x400.h = 400;
@@ -207,7 +162,6 @@ SDL_Surface *DS_SetVideoMode(_THIS, SDL_Surface *current, int width, int height,
 		else
 			++mode;
 	}
-
 	
 	if (!mode) {
 		SDL_SetError ("Display mode (%dx%d) is unsupported.", width, height);
@@ -254,8 +208,11 @@ SDL_Surface *DS_SetVideoMode(_THIS, SDL_Surface *current, int width, int height,
 	current->pixels = this->hidden->buffer;
 
 	if (flags & SDL_DOUBLEBUF) { 
+		gfxSetDoubleBuffering(gfxScreen, true);
 		this->hidden->secondbufferallocd = 1;
 		current->pixels = this->hidden->buffer;
+	} else {
+		gfxSetDoubleBuffering(gfxScreen, false);
 	}
 
 	current->pitch = current->w * (bpp / 8);
@@ -283,28 +240,20 @@ static void DS_UnlockHWSurface (_THIS, SDL_Surface *surface) {
 }
 
 static int DS_FlipHWSurface (_THIS, SDL_Surface *surface) {
-	if ((mode->w == 320) || (mode->h == 320))
-		currentBuffer[1] = doubleBuf[1];
-	else
-		currentBuffer[0] = doubleBuf[1];
-		
-	GSPGPU_FlushDataCache (NULL, gfxGetFramebuffer (GFX_TOP, GFX_LEFT, NULL, NULL), 0x46500);
-	if (enable3d)
-		GSPGPU_FlushDataCache (NULL, gfxGetFramebuffer (GFX_TOP, GFX_RIGHT, NULL, NULL), 0x46500);
-	GSPGPU_FlushDataCache (NULL, gfxGetFramebuffer (GFX_BOTTOM, GFX_LEFT, NULL, NULL), 0x38400);
-
-	gfxSetFramebufferInfo (GFX_TOP, currentBuffer[0]);
-	GSPGPU_SetBufferSwap (NULL, GFX_TOP, &topFramebufferInfo);
-
-	gfxSetFramebufferInfo (GFX_BOTTOM, currentBuffer[1]);
-	GSPGPU_SetBufferSwap (NULL, GFX_BOTTOM, &bottomFramebufferInfo);
-
-	gspWaitForVBlank ();
-
+	// Flush and swap framebuffers
+	gfxFlushBuffers();
+	gfxSwapBuffers();
+	//Wait for VBlank
+	gspWaitForVBlank();
 	return (0);
 }
 
 static void DS_UpdateRects (_THIS, int numrects, SDL_Rect *rects) {
+	// Flush and swap framebuffers
+	gfxFlushBuffers();
+	gfxSwapBuffers();
+	//Wait for VBlank
+	gspWaitForVBlank();
 }
 
 int DS_SetColors (_THIS, int firstcolor, int ncolors, SDL_Color *colors) {
@@ -324,21 +273,6 @@ int DS_SetColors (_THIS, int firstcolor, int ncolors, SDL_Color *colors) {
 }
 
 void DS_VideoQuit (_THIS) {
-	gspExitEventHandler ();
-
-	linearFree (gfxTopRightFramebuffers[1]);
-	linearFree (gfxTopRightFramebuffers[0]);
-	linearFree (gfxBottomFramebuffers[1]);
-	linearFree (gfxBottomFramebuffers[0]);
-	linearFree (gfxTopLeftFramebuffers[1]);
-	linearFree (gfxTopLeftFramebuffers[0]);
-
-	svcUnmapMemoryBlock (gspSharedMemHandle, 0x10002000);
-
-	GSPGPU_UnregisterInterruptRelayQueue (NULL);
-
-	svcCloseHandle (gspSharedMemHandle);
-	svcCloseHandle (gspEvent);
-
-	GSPGPU_ReleaseRight (NULL);
+	gfxExit();
 }
+

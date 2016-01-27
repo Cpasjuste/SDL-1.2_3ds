@@ -20,21 +20,22 @@ BUILD		:=	build
 DATA		:=	data
 INCLUDES	:=	include
 SOURCES		:=	src src/audio src/audio/dummy \
-					src/cdrom src/cdrom/dummy src/cpuinfo \
-					src/events src/file src/joystick src/joystick/dummy \
-					src/loadso/dummy src/stdlib src/thread src/thread/generic \
-					src/timer src/timer/3ds src/video src/video/dummy
+				src/cdrom src/cdrom/dummy src/cpuinfo \
+				src/events src/file src/joystick src/joystick/dummy \
+				src/loadso/dummy src/stdlib src/thread src/thread/3ds \
+				src/timer src/timer/3ds src/video src/video/3ds
+				#src/video/dummy
 
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
-ARCH	:=	-mlittle-endian -march=armv6k \
-				-mtune=mpcore -mcpu=mpcore -mfloat-abi=hard
+ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
-CFLAGS	:=	-g -Wall -O2 -mword-relocations -fomit-frame-pointer -ffast-math \
-				-fno-pic -fno-short-enums $(ARCH)
+CFLAGS	:=	-g -Wall -O2 -mword-relocations \
+			-fomit-frame-pointer -ffunction-sections \
+			$(ARCH)
 
-CFLAGS	+=	$(INCLUDE) -DARM11 -D_3DS 
+CFLAGS	+=	$(INCLUDE) -DARM11 -D_3DS
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 
 ASFLAGS	:=	-g $(ARCH)
@@ -95,7 +96,7 @@ lib:
 	
 $(BUILD): lib
 	@[ -d $@ ] || mkdir -p $@
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
 
 #---------------------------------------------------------------------------------
 clean:
